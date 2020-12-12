@@ -8,8 +8,10 @@ import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
 import java.lang.System.arraycopy
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.log10
 
 
 /**
@@ -38,6 +40,8 @@ class FFTBandView @JvmOverloads constructor(
     private val paintBandsFill = Paint()
     private val paintBands = Paint()
     private val paintAvg = Paint()
+    private val dBAvg = Paint()
+    private val dBText = Paint()
     private val paintPath = Paint()
 
     // We average out the values over 3 occurences (plus the current one), so big jumps are smoothed out
@@ -61,6 +65,13 @@ class FFTBandView @JvmOverloads constructor(
         paintAvg.strokeWidth = 2f
         paintAvg.style = Paint.Style.STROKE
 
+        dBAvg.color = Color.parseColor("#FFFF00")
+        dBAvg.strokeWidth = 2f
+        dBAvg.style = Paint.Style.STROKE
+
+        dBText.color = Color.YELLOW;
+        dBText.textSize = 20F;
+
         paintPath.color = Color.WHITE
         paintPath.strokeWidth = 8f
         paintPath.isAntiAlias = true
@@ -77,6 +88,7 @@ class FFTBandView @JvmOverloads constructor(
         fftPath.reset()
         fftPath.moveTo(0f, height.toFloat())
         var currentAverage = 0f
+        var dB = 0f
 
         // Iterate over the entire FFT result array
         while (currentFftPosition < size) {
@@ -126,7 +138,7 @@ class FFTBandView @JvmOverloads constructor(
 
             // We display the average amplitude with a vertical line
             currentAverage += smoothedAccum / bands
-
+            dB = 20 * log10(abs(currentAverage))
 
             val leftX = width * (currentFrequencyBandLimitIndex / bands.toFloat())
             val rightX = leftX + width / bands.toFloat()
@@ -167,6 +179,19 @@ class FFTBandView @JvmOverloads constructor(
             height * (1 - (currentAverage / maxConst)),
             paintAvg
         )
+
+        canvas.drawLine(
+            0f,
+            height - dB,
+            width.toFloat(),
+            height - dB,
+            dBAvg
+        )
+
+
+        canvas.drawText(dB.toString(), 100F, 25F, dBText);
+
+
     }
 
     fun onFFT(fft: FloatArray) {

@@ -2,6 +2,9 @@ package com.egeniq.exovisualizer
 
 import android.media.AudioTrack
 import android.media.AudioTrack.ERROR_BAD_VALUE
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.Format
 import com.google.android.exoplayer2.audio.AudioProcessor
@@ -57,7 +60,6 @@ class FFTAudioProcessor : AudioProcessor {
     private val src = FloatArray(SAMPLE_SIZE)
     private val dst = FloatArray(SAMPLE_SIZE + 2)
 
-
     interface FFTListener {
         fun onFFTReady(sampleRateHz: Int, channelCount: Int, fft: FloatArray)
     }
@@ -68,7 +70,7 @@ class FFTAudioProcessor : AudioProcessor {
         outputBuffer = AudioProcessor.EMPTY_BUFFER
         channelCount = Format.NO_VALUE
         sampleRateHz = Format.NO_VALUE
-
+        encoding = C.ENCODING_PCM_16BIT
     }
 
     /**
@@ -84,7 +86,7 @@ class FFTAudioProcessor : AudioProcessor {
             AudioTrack.getMinBufferSize(
                 sampleRateHz,
                 Util.getAudioTrackChannelConfig(channelCount),
-                outputEncoding
+                C.ENCODING_PCM_16BIT // outputEncoding
             )
         Assertions.checkState(minBufferSize != ERROR_BAD_VALUE)
         val multipliedBufferSize = minBufferSize * EXO_BUFFER_MULTIPLICATION_FACTOR
@@ -107,16 +109,36 @@ class FFTAudioProcessor : AudioProcessor {
     }
 
 
-    override fun configure(
-        sampleRateHz: Int,
-        channelCount: Int, @C.Encoding encoding: Int
-    ): Boolean {
+//    override fun configure(
+//        sampleRateHz: Int,
+//        channelCount: Int, @C.Encoding encoding: Int
+//    ): Boolean {
+//        if (encoding != C.ENCODING_PCM_16BIT) {
+//            throw AudioProcessor.UnhandledFormatException(sampleRateHz, channelCount, encoding)
+//        }
+//        this.sampleRateHz = sampleRateHz
+//        this.channelCount = channelCount
+//        this.encoding = encoding
+//        val wasActive = isActive
+//        isActive = true
+//
+//        noise = Noise.real(SAMPLE_SIZE)
+//
+//        audioTrackBufferSize = getDefaultBufferSizeInBytes()
+//
+//        srcBuffer = ByteBuffer.allocate(audioTrackBufferSize + BUFFER_EXTRA_SIZE)
+//
+//        return !wasActive
+//    }
+
+    override fun configure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (encoding != C.ENCODING_PCM_16BIT) {
-            throw AudioProcessor.UnhandledFormatException(sampleRateHz, channelCount, encoding)
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        this.sampleRateHz = sampleRateHz
-        this.channelCount = channelCount
-        this.encoding = encoding
+
+        sampleRateHz = inputAudioFormat.sampleRate
+        channelCount = inputAudioFormat.channelCount
+        encoding = inputAudioFormat.encoding
         val wasActive = isActive
         isActive = true
 
@@ -126,23 +148,28 @@ class FFTAudioProcessor : AudioProcessor {
 
         srcBuffer = ByteBuffer.allocate(audioTrackBufferSize + BUFFER_EXTRA_SIZE)
 
-        return !wasActive
+        return inputAudioFormat // !wasActive
     }
 
     override fun isActive(): Boolean {
         return isActive
     }
 
-    override fun getOutputChannelCount(): Int {
-        return channelCount
-    }
+//    override fun getOutputChannelCount(): Int {
+//        return channelCount
+//    }
+//
+//    override fun getOutputEncoding(): Int {
+//        return encoding
+//    }
+//
+//    override fun getOutputSampleRateHz(): Int {
+//        return sampleRateHz
+//    }
 
-    override fun getOutputEncoding(): Int {
-        return encoding
-    }
-
-    override fun getOutputSampleRateHz(): Int {
-        return sampleRateHz
+    @Synchronized
+    fun runOnUiThread(runnable: () -> Unit) {
+        Handler(Looper.getMainLooper()).postAtFrontOfQueue(runnable)
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -180,8 +207,10 @@ class FFTAudioProcessor : AudioProcessor {
 
         inputBuffer.position(limit)
 
-        processFFT(this.fftBuffer)
-
+        runOnUiThread {
+            processFFT(this.fftBuffer)
+            Log.d("FFTAudioProcessor", "data")
+        }
         processBuffer.flip()
         outputBuffer = this.processBuffer
     }
@@ -223,10 +252,10 @@ class FFTAudioProcessor : AudioProcessor {
         inputEnded = true
     }
 
-    override fun getOutput(): ByteBuffer? {
+    override fun getOutput(): ByteBuffer {
         val outputBuffer = this.outputBuffer
         this.outputBuffer = AudioProcessor.EMPTY_BUFFER
-        return outputBuffer
+        return outputBuffer!!
     }
 
     override fun isEnded(): Boolean {
